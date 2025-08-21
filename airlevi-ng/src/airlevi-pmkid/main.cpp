@@ -6,8 +6,16 @@
 #include <chrono>
 #include <signal.h>
 #include <unistd.h>
+#include <cstdio>
 
 PMKIDAttack* g_attack = nullptr;
+
+static bool parseMacString(const std::string& mac_str, MacAddress& out) {
+    unsigned int b[6];
+    if (std::sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) return false;
+    for (int i = 0; i < 6; ++i) out.bytes[i] = static_cast<uint8_t>(b[i] & 0xFF);
+    return true;
+}
 
 void signalHandler(int signum) {
     if (g_attack) {
@@ -141,12 +149,12 @@ void runInteractiveMode(PMKIDAttack& attack) {
             }
         }
         else if (cmd == "target" && tokens.size() >= 2) {
-            try {
-                MacAddress bssid = MacAddress::fromString(tokens[1]);
+            MacAddress bssid;
+            if (!parseMacString(tokens[1], bssid)) {
+                std::cout << "[-] Invalid BSSID format" << std::endl;
+            } else {
                 attack.setTargetBSSID(bssid);
                 std::cout << "[+] Target BSSID set to " << bssid.toString() << std::endl;
-            } catch (const std::exception& e) {
-                std::cout << "[-] Invalid BSSID format" << std::endl;
             }
         }
         else if (cmd == "wordlist" && tokens.size() >= 2) {
@@ -261,13 +269,12 @@ int main(int argc, char* argv[]) {
     
     // Configure attack
     if (!target_bssid.empty()) {
-        try {
-            MacAddress bssid = MacAddress::fromString(target_bssid);
-            attack.setTargetBSSID(bssid);
-        } catch (const std::exception& e) {
+        MacAddress bssid;
+        if (!parseMacString(target_bssid, bssid)) {
             std::cerr << "[-] Invalid BSSID format: " << target_bssid << std::endl;
             return 1;
         }
+        attack.setTargetBSSID(bssid);
     }
     
     if (!target_ssid.empty()) {

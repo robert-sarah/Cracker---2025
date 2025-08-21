@@ -4,8 +4,27 @@
 #include <fstream>
 #include <cstring>
 #include <unistd.h>
+#include <algorithm>
+#include <iomanip>
+#include <cstdio>
 
 namespace airlevi {
+
+// Helper: parse MAC address string like "aa:bb:cc:dd:ee:ff" into MacAddress
+static bool parseMacString(const std::string& mac_str, MacAddress& out) {
+    unsigned int b[6];
+    if (std::sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) {
+        return false;
+    }
+    for (int i = 0; i < 6; ++i) out.bytes[i] = static_cast<uint8_t>(b[i] & 0xFF);
+    return true;
+}
+
+// Helper: check if a MacAddress is all zeros
+static bool isZeroMac(const MacAddress& mac) {
+    for (int i = 0; i < 6; ++i) if (mac.bytes[i] != 0) return false;
+    return true;
+}
 
 PacketReplay::PacketReplay() 
     : pcap_handle_(nullptr), inject_handle_(nullptr), mode_(ReplayMode::SINGLE),
@@ -61,13 +80,23 @@ bool PacketReplay::loadCaptureFile(const std::string& filename) {
 }
 
 bool PacketReplay::setTargetMAC(const std::string& mac) {
-    target_mac_ = MacAddress(mac);
+    MacAddress parsed;
+    if (!parseMacString(mac, parsed)) {
+        Logger::getInstance().error("Invalid target MAC format: " + mac);
+        return false;
+    }
+    target_mac_ = parsed;
     modify_mac_ = true;
     return true;
 }
 
 bool PacketReplay::setSourceMAC(const std::string& mac) {
-    source_mac_ = MacAddress(mac);
+    MacAddress parsed;
+    if (!parseMacString(mac, parsed)) {
+        Logger::getInstance().error("Invalid source MAC format: " + mac);
+        return false;
+    }
+    source_mac_ = parsed;
     modify_mac_ = true;
     return true;
 }
@@ -223,12 +252,12 @@ void PacketReplay::modifyPacket(u_char* packet, int length) {
     if (length < 24) return; // Too short for 802.11 header
     
     // Modify destination MAC (offset 4-9)
-    if (!target_mac_.isNull()) {
+    if (!isZeroMac(target_mac_)) {
         memcpy(packet + 4, target_mac_.bytes, 6);
     }
     
     // Modify source MAC (offset 10-15)
-    if (!source_mac_.isNull()) {
+    if (!isZeroMac(source_mac_)) {
         memcpy(packet + 10, source_mac_.bytes, 6);
     }
 }

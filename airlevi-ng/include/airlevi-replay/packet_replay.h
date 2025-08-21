@@ -9,6 +9,7 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 
 namespace airlevi {
 

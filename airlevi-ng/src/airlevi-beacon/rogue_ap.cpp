@@ -5,8 +5,19 @@
 #include <fstream>
 #include <cstring>
 #include <unistd.h>
+#include <random>
 
 namespace airlevi {
+
+static MacAddress randomMac() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dist(0, 255);
+    MacAddress m;
+    for (int i = 0; i < 6; ++i) m.bytes[i] = static_cast<uint8_t>(dist(gen));
+    m.bytes[0] = (m.bytes[0] | 0x02) & 0xFE; // locally administered, unicast
+    return m;
+}
 
 RogueAP::RogueAP() 
     : pcap_handle_(nullptr), mode_(APMode::EVIL_TWIN), running_(false),
@@ -89,7 +100,7 @@ void RogueAP::beaconThread() {
             for (const auto& ssid : fake_ssids_) {
                 APConfig fake_config = config_;
                 fake_config.ssid = ssid;
-                fake_config.bssid = MacAddress::random();
+                fake_config.bssid = randomMac();
                 
                 // Create and send fake beacon
                 auto fake_beacon = createBeacon();

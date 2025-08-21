@@ -3,11 +3,20 @@
 #include <iostream>
 #include <getopt.h>
 #include <signal.h>
+#include <cstdio>
 
 using namespace airlevi;
 
 static bool running = true;
 static WPSAttack* wps_instance = nullptr;
+
+// Helper to parse MAC address string
+static bool parseMacString(const std::string& mac_str, MacAddress& out) {
+    unsigned int b[6];
+    if (std::sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) return false;
+    for (int i = 0; i < 6; ++i) out.bytes[i] = static_cast<uint8_t>(b[i] & 0xFF);
+    return true;
+}
 
 void signalHandler(int signal) {
     std::cout << "\n[!] Received signal " << signal << ", stopping attack..." << std::endl;
@@ -169,7 +178,11 @@ int main(int argc, char* argv[]) {
         }
         
         // Configure attack
-        wps_attack.setTarget(MacAddress(bssid));
+        {
+            MacAddress mac;
+            if (!parseMacString(bssid, mac)) { std::cerr << "Invalid BSSID format\n"; return 1; }
+            wps_attack.setTarget(mac);
+        }
         if (channel > 0) {
             wps_attack.setChannel(channel);
         }

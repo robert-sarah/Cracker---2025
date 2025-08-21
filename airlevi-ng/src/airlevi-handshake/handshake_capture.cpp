@@ -314,9 +314,9 @@ void HandshakeCapture::sendDeauthPacket(const MacAddress& ap_bssid, const MacAdd
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // BSSID = ap_bssid
         0x00, 0x00, 0x07, 0x00 // Reason code
     };
-    memcpy(packet + 4, client_mac.addr, 6);
-    memcpy(packet + 10, ap_bssid.addr, 6);
-    memcpy(packet + 16, ap_bssid.addr, 6);
+    memcpy(packet + 4, client_mac.bytes, 6);
+    memcpy(packet + 10, ap_bssid.bytes, 6);
+    memcpy(packet + 16, ap_bssid.bytes, 6);
 
     if (pcap_sendpacket(pcap_handle, packet, sizeof(packet)) != 0) {
         // std::cerr << "Warning: pcap_sendpacket failed: " << pcap_geterr(pcap_handle) << std::endl;

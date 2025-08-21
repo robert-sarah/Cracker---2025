@@ -3,10 +3,21 @@
 #include <iostream>
 #include <getopt.h>
 #include <signal.h>
+#include <cstdio>
 
 using namespace airlevi;
 
 static bool running = true;
+
+// Helper to parse a MAC string like AA:BB:CC:DD:EE:FF into MacAddress
+static bool parseMacString(const std::string& mac_str, MacAddress& out) {
+    unsigned int b[6];
+    if (std::sscanf(mac_str.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) {
+        return false;
+    }
+    for (int i = 0; i < 6; ++i) out.bytes[i] = static_cast<uint8_t>(b[i] & 0xFF);
+    return true;
+}
 
 void signalHandler(int signal) {
     std::cout << "\n[!] Received signal " << signal << ", stopping forge..." << std::endl;
@@ -160,35 +171,45 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Error: SSID and BSSID required for beacon\n";
                 return 1;
             }
-            packet = forge.createBeacon(ssid, MacAddress(bssid), channel, encryption);
+            MacAddress bssid_mac;
+            if (!parseMacString(bssid, bssid_mac)) { std::cerr << "Invalid BSSID format\n"; return 1; }
+            packet = forge.createBeacon(ssid, bssid_mac, channel, encryption);
             
         } else if (packet_type == "probe-req") {
             if (ssid.empty() || source.empty()) {
                 std::cerr << "Error: SSID and source MAC required for probe request\n";
                 return 1;
             }
-            packet = forge.createProbeRequest(ssid, MacAddress(source));
+            MacAddress src_mac;
+            if (!parseMacString(source, src_mac)) { std::cerr << "Invalid source MAC format\n"; return 1; }
+            packet = forge.createProbeRequest(ssid, src_mac);
             
         } else if (packet_type == "deauth") {
             if (bssid.empty() || client.empty()) {
                 std::cerr << "Error: BSSID and client MAC required for deauth\n";
                 return 1;
             }
-            packet = forge.createDeauth(MacAddress(bssid), MacAddress(client), reason);
+            MacAddress bssid_mac, client_mac;
+            if (!parseMacString(bssid, bssid_mac) || !parseMacString(client, client_mac)) { std::cerr << "Invalid MAC format\n"; return 1; }
+            packet = forge.createDeauth(bssid_mac, client_mac, reason);
             
         } else if (packet_type == "evil-twin") {
             if (ssid.empty() || bssid.empty()) {
                 std::cerr << "Error: SSID and BSSID required for evil twin\n";
                 return 1;
             }
-            packet = forge.createEvilTwinBeacon(ssid, MacAddress(bssid), channel);
+            MacAddress bssid_mac;
+            if (!parseMacString(bssid, bssid_mac)) { std::cerr << "Invalid BSSID format\n"; return 1; }
+            packet = forge.createEvilTwinBeacon(ssid, bssid_mac, channel);
             
         } else if (packet_type == "wps-beacon") {
             if (ssid.empty() || bssid.empty()) {
                 std::cerr << "Error: SSID and BSSID required for WPS beacon\n";
                 return 1;
             }
-            packet = forge.createWPSBeacon(ssid, MacAddress(bssid), channel, wps_locked);
+            MacAddress bssid_mac;
+            if (!parseMacString(bssid, bssid_mac)) { std::cerr << "Invalid BSSID format\n"; return 1; }
+            packet = forge.createWPSBeacon(ssid, bssid_mac, channel, wps_locked);
         }
         
         if (packet.empty()) {

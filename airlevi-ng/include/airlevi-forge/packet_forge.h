@@ -26,7 +26,7 @@ enum class PacketType {
     ACK
 };
 
-struct IEEE80211Header {
+struct Forge80211Header {
     uint16_t frame_control;
     uint16_t duration;
     uint8_t addr1[6];  // Destination
@@ -35,7 +35,7 @@ struct IEEE80211Header {
     uint16_t seq_ctrl;
 } __attribute__((packed));
 
-struct BeaconFrame {
+struct ForgeBeaconFrame {
     uint64_t timestamp;
     uint16_t beacon_interval;
     uint16_t capabilities;
